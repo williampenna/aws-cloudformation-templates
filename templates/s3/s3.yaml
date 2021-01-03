@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 cloudformation templates'
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Environment
+  AllowedUrlsAccessBucket:
+    Type: String
+    Description: URL's that are allowed to access the bucket
+
+Resources:
+  # :::: S3 :::: #
+  PublicS3BucketWithAccessRestriction:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${Stage}-public-bucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: FALSE
+        BlockPublicPolicy: FALSE
+      Tags:
+        - Key: environment
+          Value: !Ref Stage
+        - Key: aws-services
+          Value: s3-bucket
+
+  NonPublicS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${Stage}-non-public-bucket
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: TRUE
+        BlockPublicPolicy: TRUE
+      Tags:
+        - Key: environment
+          Value: !Ref Stage
+        - Key: aws-services
+          Value: s3-bucket
+
+  # :::: S3 Bucket Policy :::: #
+  UsefulDocumentsPhotoS3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref PublicS3BucketWithAccessRestriction
+      PolicyDocument:
+        Statement: 
+        - 
+          Action: 
+            - "s3:GetObject"
+          Effect: "Allow"
+          Resource: 
+            Fn::Join: 
+              - ""
+              - 
+                - "arn:aws:s3:::"
+                - 
+                  Ref: "PublicS3BucketWithAccessRestriction"
+                - "/*"
+          Principal: "*"
+          Condition: 
+            StringLike: 
+              aws:Referer: !Ref AllowedUrlsAccessBucket

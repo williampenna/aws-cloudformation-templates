@@ -1,0 +1,6 @@
+{
+  "Parameters": {
+    "Stage":"dev",
+    "AllowedUrlsAccessBucket": "https://google.com"
+  }
+}
