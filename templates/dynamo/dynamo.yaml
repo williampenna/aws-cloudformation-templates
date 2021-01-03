@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB tables cloudformation creations'
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Environment
+
+Resources:
+  # :::: DYNAMODB :::: #
+  DynamoDBTableWithProvisionedThroughput:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      TableName: !Sub ${Stage}_dynamo_table
+      AttributeDefinitions: 
+        - AttributeName: id
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+      Tags:
+        - Key: servico-aws
+          Value: dynamo-db
+
+  DynamoDBTableWithLocalIndex:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Stage}_dynamo_table_local_index
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: uuid
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: uuid
+          KeyType: RANGE
+      LocalSecondaryIndexes:
+        - IndexName: date_index
+          KeySchema:
+            - AttributeName: uuid
+              KeyType: HASH
+            - AttributeName: date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags: 
+        - Key: Service
+          Value: DynamoDB
+
+  DynamoDBTableWithGlobalIndex:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${Stage}_dynamo_table_global_index
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: uuid
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+        - AttributeName: uuid
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: date_index
+          KeySchema:
+            - AttributeName: date
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL 
+      BillingMode: PAY_PER_REQUEST
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      Tags:
+        - Key: Service
+          Value: DynamoDB
