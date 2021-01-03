@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Parameter store cloudformation templates'
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Envrionmnet
+
+Resources:
+  ParameterStore:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "/${Stage}/parameters"
+      Tier: Standard
+      Type: String
+      Value: !Sub "{\n \"ENVIRONMENT\": \"${Stage}\",\n\"TEST\": \"Test\" }"
+      Tags:
+        "environment": !Ref Stage
+        "servico": parameter-store
