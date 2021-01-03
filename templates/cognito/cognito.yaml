@@ -1,0 +1,29 @@
+# Template to create cognito User Pool by cloudformation
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Cognito cloudformation template'
+
+Parameters:
+  Stage:
+    Type: String
+    Description: Environment
+  CognitoUserPoolName:
+    Type: String
+    Description: Name of the user pool 
+Resources:
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      MfaConfiguration: "OFF"
+      AliasAttributes:
+        - preferred_username
+        - phone_number
+        - email
+      Policies: 
+        PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: false
+            RequireNumbers: false
+            RequireSymbols: false
+            RequireUppercase: false
+            TemporaryPasswordValidityDays: 7
+      UserPoolName: !Sub ${Stage}-${CognitoUserPoolName}
