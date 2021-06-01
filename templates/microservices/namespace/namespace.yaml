@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Namespace declaration
+Parameters:
+  Stage:
+    Type: String
+    Description: Environment
+  VpcId:
+    Type: String
+    Description: Id of the VPC
+Resources:
+  PrivateNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+        Name: !Sub ${Stage}.internal
+        Vpc: !Ref VpcId
+
+Outputs:
+  NamespaceId:
+    Description: The id of generated namespace
+    Value: !Ref 'PrivateNamespace'
+    Export:
+      Name: !Join [':', [!Ref "AWS::StackName", "NameSpace" ]]

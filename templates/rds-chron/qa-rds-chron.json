@@ -1,0 +1,6 @@
+{
+    "Parameters": {
+        "Stage":"qa",
+        "RdsName":"qa-database"
+    }
+}

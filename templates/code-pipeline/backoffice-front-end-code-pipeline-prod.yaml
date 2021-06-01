@@ -1,0 +1,389 @@
+# Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS Code Pipeline template'
+Parameters:
+  RepositoryName:
+    Type: String
+    Description: "Put the CodeCommit repository name that this pipeline will be connected"
+  BranchName:
+    Type: String
+    Description: "Put the Branch name that this pipeline will be connected"
+    Default: develop
+  ProjectName:
+    Type: String
+    Description: "Put the name of the pipeline Project"
+    Default: dev-backoffice-web-site
+  ArtifactBucket:
+    Type: String
+    Description: "Put the bucket name where the CodeBuild will write the build files"
+    Default: web-backoffice-develop
+  SiteBuildStage:
+    Type: String
+  Stage:
+    Type: String
+    Description: "Put the name of alias command to build web site for the given environment"
+    Default: dev
+  ProjectTag:
+    Type: String
+    Description: "Tag of the project"
+    Default: portal-backoffice
+  AreaTag:
+    Type: String
+    Description: "Tag of area"
+    Default: compartilhado
+  Microservice:
+    Type: String
+    Description: "Tag of microservice"
+    Default: nao-aplicavel
+  # CloudFrontDistributionId:
+  #  Type: String
+  #  Description: Cloud front distribution ID
+
+Resources:
+  CodePipelineArtifactStoreBucket:
+    Type: 'AWS::S3::Bucket'
+  CodePipelineArtifactStoreBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CodePipelineArtifactStoreBucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Sid: DenyUnEncryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Join [ '', [ !GetAtt CodePipelineArtifactStoreBucket.Arn, '/*' ] ]
+            Condition:
+              StringNotEquals: 
+                s3:x-amz-server-side-encryption: aws:kms
+          -
+            Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: !Join [ '', [ !GetAtt CodePipelineArtifactStoreBucket.Arn, '/*' ] ]
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${ProjectName}-pipeline
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref CodePipelineArtifactStoreBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: '1'
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: SourceOutput
+              Configuration:
+                BranchName: !Ref BranchName
+                RepositoryName: !Ref RepositoryName
+                PollForSourceChanges: true
+              RunOrder: '1'
+        - Name: Build
+          Actions:
+          - Name: Build
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Version: 1
+              Provider: CodeBuild
+            Configuration:
+              ProjectName: !Ref BuildProject
+            RunOrder: 1
+            InputArtifacts:
+              - Name: SourceOutput
+            OutputArtifacts:
+              - Name: BuildOutput
+
+  CloudWatchEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      Policies:
+        -
+          PolicyName: cwe-pipeline-execution
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Effect: Allow
+                Action: codepipeline:StartPipelineExecution
+                Resource: !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref CodePipeline ] ]
+  CloudWatchEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - 'AWS API Call via CloudTrail'
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - PutObject
+            - CompleteMultipartUpload
+          resources:
+            ARN:
+              - !Join [ '', [ !GetAtt CodePipelineArtifactStoreBucket.Arn, '/', !Ref ArtifactBucket ] ]
+      Targets:
+        -
+          Arn:
+            !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref CodePipeline ] ]
+          RoleArn: !GetAtt CloudWatchEventRole.Arn
+          Id: codepipeline-CodePipeline
+
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service:
+            - codepipeline.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Action:
+              - codebuild:BatchGetBuilds
+              - codebuild:StartBuild
+              Resource: "*"
+              Effect: Allow
+            - Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:GetBucketVersioning
+              Resource: "*"
+              Effect: Allow
+            - Action:
+              - s3:PutObject
+              Resource:
+              - arn:aws:s3:::codepipeline*
+              - arn:aws:s3:::elasticbeanstalk*
+              Effect: Allow
+            - Action:
+              - codebuild:*
+              Resource: "*"
+              Effect: Allow
+            - Action:
+              - autoscaling:*
+              - cloudwatch:*
+              - s3:*
+              - sns:*
+              - cloudformation:*
+              - sqs:*
+              - iam:PassRole
+              Resource: "*"
+              Effect: Allow
+            - Action:
+              - codedeploy:CreateDeployment
+              - codedeploy:GetApplicationRevision
+              - codedeploy:GetDeployment
+              - codedeploy:GetDeploymentConfig
+              - codedeploy:RegisterApplicationRevision
+              Resource: "*"
+              Effect: Allow
+            - Action:
+              - lambda:InvokeFunction
+              - lambda:ListFunctions
+              Resource: "*"
+              Effect: Allow
+            - Action:
+              - codecommit:CancelUploadArchive
+              - codecommit:GetBranch
+              - codecommit:GetCommit
+              - codecommit:GetUploadArchiveStatus
+              - codecommit:UploadArchive
+              Resource: "*"
+              Effect: Allow
+
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ProjectName
+      Description: !Sub 'CodeBuild for project: ${ProjectName}'
+      ServiceRole: !GetAtt BuildProjectRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: linuxContainer
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/nodejs:8.11.0
+        EnvironmentVariables:
+          - Name: Environment
+            Value: DEV
+          - Name: SITE_BUCKET
+            Value: !Ref ArtifactBucket
+          - Name: SITE_BUILD_STAGE
+            Value: !Ref SiteBuildStage
+          #- Name: CLOUD_FRONT_DISTRIBUTION_ID
+          #  Value: !Ref CloudFrontDistributionId  - aws cloudfront create-invalidation --distribution-id ${CLOUD_FRONT_DISTRIBUTION_ID} --paths "/*"
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              commands:
+                - echo Installing source NPM dependencies...
+                - npm install
+            build:
+              commands:
+              - echo Build started on `date`
+              - npm run ${SITE_BUILD_STAGE}
+            post_build:
+              commands:
+                - aws s3 sync ./build s3://${SITE_BUCKET}/ --acl public-read --region sa-east-1
+                - echo making the website public
+                - aws s3 website s3://${SITE_BUCKET}/ --index-document index.html --error-document index.html --region sa-east-1
+                - echo Build completed on `date`
+          artifacts:
+            files:
+              - '**/*'
+            base-directory: build
+      TimeoutInMinutes: 10
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: code-pipeline
+        - Key: microsservico
+          Value: !Ref Microservice
+  
+  BuildProjectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-code-build-role
+      Policies:
+        - PolicyName: CloudFormationRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'ec2:*'
+                  - 's3:*'
+                  - 'codepipeline:*'
+                  - 'codebuild:*'
+                  - 'iam:*'
+                  - 'elasticloadbalancing:*'
+                  - 'logs:*'
+                  - 'ecs:*'
+                  - 'apigateway:*'
+                  - 'ssm:*'
+                  - 'cloudfront:CreateInvalidation'
+                Effect: Allow
+                Resource: '*'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+  BuildProjectPolicy:
+    Type: AWS::IAM::Policy
+    DependsOn: CodePipelineArtifactStoreBucket
+    Properties:
+      PolicyName: !Sub ${ProjectName}-code-build-policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetBucketPolicy
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+             - !Sub 'arn:aws:s3:::${CodePipelineArtifactStoreBucket}/*'
+             - !Sub 'arn:aws:s3:::${CodePipelineArtifactStoreBucket}'
+             - !Sub 'arn:aws:s3:::*/*'
+             - !Sub 'arn:aws:s3:::*'
+          - Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: arn:aws:logs:*:*:*
+          - Effect: Allow
+            Action:
+              - cloudformation:ValidateTemplate
+            Resource: '*'
+
+      Roles:
+        -
+          !Ref BuildProjectRole
+  CloudformationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: ['sts:AssumeRole']
+          Effect: Allow
+          Principal:
+            Service: [cloudformation.amazonaws.com]
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyName: CloudFormationRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - 'ec2:*'
+                  - 's3:*'
+                  - 'codepipeline:*'
+                  - 'codebuild:*'
+                  - 'iam:*'
+                Effect: Allow
+                Resource: '*'

@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Description: Stage
+  ProjectTag:
+    Type: String
+    Description: Project tag
+  AreaTag:
+    Type: String
+    Description: Tag of the area
+  Microservice:
+    Type: String
+    Description: Tag of the microservice
+  ServiceName:
+    Type: String
+    Description: Name of the service
+Resources:
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${Stage}-${ServiceName}
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: ecr
+        - Key: microsservico
+          Value: !Ref Microservice

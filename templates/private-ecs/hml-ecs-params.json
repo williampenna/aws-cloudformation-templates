@@ -1,0 +1,19 @@
+{
+    "Parameters": {
+        "DesiredCapacity":"1",
+        "MaxSize":"2",
+        "InstanceType":"t2.micro",
+        "ECSAMI":"/aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id",
+        "VpcId":"",
+        "PrivateOneCIDR":"10.2.3.0/24",
+        "PrivateTwoCIDR":"10.2.4.0/24",
+        "Stage":"prod",
+        "ProjectTag":"",
+        "AreaTag":"",
+        "Microservice": "",
+        "PublicSubnetId": "",
+        "PublicEcsSecurityGroup": "",
+        "PrivateSubnetId": "-",
+        "PrivateSecurityGroupId": "-"
+    }
+}

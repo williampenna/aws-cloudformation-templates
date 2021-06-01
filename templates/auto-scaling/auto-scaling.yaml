@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Auto Scaling Scheduled Policies for Non Prod
+Parameters:
+  PrivateAutoScalingGroup:
+    Type: String
+    Description: Private Auto Scaling Group Name
+
+  PublicAutoScalingGroup:
+    Type: String
+    Description: Puvlic Auto Scaling Group Name
+
+Resources:
+  PrivateScheduledActionIn:
+    Type: AWS::AutoScaling::ScheduledAction
+    Properties: 
+      AutoScalingGroupName: !Ref PrivateAutoScalingGroup
+      DesiredCapacity: 0
+      MaxSize: 0
+      MinSize: 0
+      Recurrence: 0 22 * * 1-5
+
+  PrivateScheduledActionOut:
+    Type: AWS::AutoScaling::ScheduledAction
+    Properties: 
+      AutoScalingGroupName: !Ref PrivateAutoScalingGroup
+      DesiredCapacity: 1
+      MaxSize: 2
+      MinSize: 1
+      Recurrence: 50 9 * * 1-5
+
+  PublicScheduledActionIn:
+    Type: AWS::AutoScaling::ScheduledAction
+    Properties: 
+      AutoScalingGroupName: !Ref PublicAutoScalingGroup
+      DesiredCapacity: 0
+      MaxSize: 0
+      MinSize: 0
+      Recurrence: 0 22 * * 1-5
+
+  PublicScheduledActionOut:
+    Type: AWS::AutoScaling::ScheduledAction
+    Properties: 
+      AutoScalingGroupName: !Ref PublicAutoScalingGroup
+      DesiredCapacity: 1
+      MaxSize: 2
+      MinSize: 1
+      Recurrence: 50 9 * * 1-5

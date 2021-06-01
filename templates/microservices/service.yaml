@@ -1,0 +1,174 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Description: Environment
+  ServiceName:
+    Type: String
+    Description: Name of the service
+  ProjectTag:
+    Type: String
+    Description: Tag of the project
+  AreaTag:
+    Type: String
+    Description: Tag of the area
+  Microservice:
+    Type: String
+    Description: Tag for Microservice
+  EcrImage:
+    Type: String
+    Description: Link to Ecr image
+  VpcId:
+    Type: String
+    Description: Identifier of the VPC
+  LoadBalancerArn:
+    Type: String
+    Description: Arn of the Load Balancer
+  ClusterName:
+    Type: String
+    Description: Name of the Cluster
+  ListenerArn:
+    Type: String
+    Description: Arn of the load balancer listener
+  PathPattern:
+    Type: String
+    Description: The pattern of the path for the given service
+  Priority:
+    Type: String
+    Description: Priority of the rule
+  PrivateNamespaceId:
+    Type: String
+    Description: Private namespace id
+  Region:
+    Type: String
+    Description: Region of the environment
+  LogGroupName: 
+    Type: String
+    Description: Log Group
+  ListenerArnHttps:
+    Type: String
+    Description: Arn of the https load balancer listener
+  LoadBalancerUrl:
+    Type: String
+    Description: URl of Load Balancer
+Resources:
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions: 
+        - Cpu: 128
+          Image: !Ref EcrImage
+          Memory: 128
+          Name: !Sub ${Stage}-${ServiceName}
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 0
+          LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-region: !Ref Region
+                awslogs-group: !Ref LogGroupName
+          Environment:
+            - Name: STAGE
+              Value: !Ref Stage
+            - Name: REGION
+              Value: !Ref Region
+            - Name: LOAD_BALANCER_URL
+              Value: !Ref LoadBalancerUrl
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: task-definition
+        - Key: microsservico
+          Value: !Ref Microservice
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckEnabled: 'true'
+      HealthCheckIntervalSeconds: 300
+      HealthCheckTimeoutSeconds: 30
+      HealthyThresholdCount: 2
+      Matcher:
+        HttpCode: 200-499
+      Name: !Sub ${Stage}-${ServiceName}
+      Port: 80
+      Protocol: HTTP
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: target-group
+        - Key: microsservico
+          Value: !Ref Microservice
+      VpcId: !Ref VpcId
+  ServiceListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties: 
+      Actions: 
+        - Type: forward
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TargetGroup
+      Conditions: 
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - !Ref PathPattern
+      ListenerArn: !Ref ListenerArn
+      Priority: !Ref Priority
+  ServiceHttpsListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties: 
+      Actions: 
+        - Type: forward
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref TargetGroup
+      Conditions: 
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - !Ref PathPattern
+      ListenerArn: !Ref ListenerArnHttps
+      Priority: !Ref Priority
+  DiscoveryService:
+    Type: AWS::ServiceDiscovery::Service
+    Properties: 
+      Description: Discovery Service for application
+      DnsConfig:
+        RoutingPolicy: WEIGHTED
+        DnsRecords:
+          - TTL: 60
+            Type: SRV
+      HealthCheckCustomConfig: 
+        FailureThreshold: 1
+      Name: !Sub ${Stage}-${ServiceName}
+      NamespaceId: !Ref PrivateNamespaceId
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: ServiceListenerRule
+    Properties:
+      Cluster: !Ref ClusterName
+      DesiredCount: 1
+      DeploymentConfiguration:
+        MaximumPercent: 200
+      LaunchType: EC2
+      LoadBalancers:
+        - ContainerName: !Sub ${Stage}-${ServiceName}
+          ContainerPort: 3000
+          TargetGroupArn: !Ref TargetGroup
+      ServiceName: !Sub ${Stage}-${ServiceName}
+      TaskDefinition: !Ref TaskDefinition
+      ServiceRegistries:
+        - RegistryArn: !GetAtt DiscoveryService.Arn
+          ContainerName: !Sub ${Stage}-${ServiceName}
+          ContainerPort: 3000

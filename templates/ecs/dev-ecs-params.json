@@ -1,0 +1,15 @@
+{
+    "Parameters": {
+        "DesiredCapacity":"1",
+        "MaxSize":"2",
+        "InstanceType":"t3.micro",
+        "ECSAMI":"/aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id",
+        "VPCCIDR":"10.0.0.0/16",
+        "PublicOneCIDR":"10.0.1.0/24",
+        "PublicTwoCIDR":"10.0.2.0/24",
+        "Stage":"dev",
+        "ProjectTag":"",
+        "AreaTag":"",
+        "Microservice": ""
+    }
+}

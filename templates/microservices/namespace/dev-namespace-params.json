@@ -1,0 +1,7 @@
+{
+    "Parameters": {
+        "Stage":"dev",
+        "VpcId":"vpc-0e65db1905c1732db"
+    }
+}
+

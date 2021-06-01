@@ -1,0 +1,461 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  DesiredCapacity:
+    Type: Number
+    Default: '1'
+    Description: Number of instances to launch in your ECS cluster.
+  MaxSize:
+    Type: Number
+    Default: '6'
+    Description: Maximum number of instances that can be launched in your ECS cluster.
+  InstanceType:
+    Description: EC2 instance type
+    Type: String
+    Default: t2.micro
+    AllowedValues: [t2.micro, t2.small, t2.medium, t2.large, t2.xlarge, t3.micro, t3.small,
+      t3.medium, t3.large, t3.xlarge, m4.large, m4.xlarge, m5.large, m5.xlarge, c4.large,
+      c4.xlarge, c5.large, c5.xlarge, r4.large, r4.xlarge, r5.large, r5.xlarge, i3.large,
+      i3.xlarge]
+    ConstraintDescription: Please choose a valid instance type.
+  ECSAMI:
+    Description: AMI ID
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /aws/service/ecs/optimized-ami/amazon-linux/recommended/image_id
+  VPCCIDR:
+    Description: CIDR block of VPC
+    Type: String
+  PublicOneCIDR:
+    Type: String
+    Description: CIDR of first public subnet
+  PublicTwoCIDR:
+    Type: String
+    Description: CIDR of second public subnet
+  Stage:
+    Type: String
+    Description: Environment stage
+  ProjectTag:
+    Type: String
+    Description: project tag of the resource
+  AreaTag:
+    Type: String
+    Description: area tag of the resource
+  Microservice:
+    Type: String
+    Description: microservice tag of the resource
+
+Resources:
+  # VPC into which stack instances will be placed
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      CidrBlock: !Ref VPCCIDR
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: vpc
+        - Key: microsservico
+          Value: !Ref Microservice
+  #Public Subnets
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref PublicOneCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: subnet-publica
+        - Key: microsservico
+          Value: !Ref Microservice
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:
+        Fn::Select:
+        - 1
+        - Fn::GetAZs: {Ref: 'AWS::Region'}
+      VpcId: !Ref 'VPC'
+      CidrBlock: !Ref PublicTwoCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: subnet-publica
+        - Key: microsservico
+          Value: !Ref Microservice
+  #Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: internet-gateway
+        - Key: microsservico
+          Value: !Ref Microservice
+  GatewayAttachement:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'VPC'
+      InternetGatewayId: !Ref 'InternetGateway'
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: route-table
+        - Key: microsservico
+          Value: !Ref Microservice
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachement
+    Properties:
+      RouteTableId: !Ref 'PublicRouteTable'
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref 'InternetGateway'
+  PublicSubnetOneRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetOne
+      RouteTableId: !Ref PublicRouteTable
+  PublicSubnetTwoRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetTwo
+      RouteTableId: !Ref PublicRouteTable
+
+  # ECS Resources
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${Stage}-Cluster
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: ecs
+        - Key: microsservico
+          Value: !Ref Microservice
+  #Security Groups
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ECS Security Group
+      VpcId: !Ref 'VPC'
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: security-group
+        - Key: microsservico
+          Value: !Ref Microservice
+  EcsSecurityGroupHTTPinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '80'
+      ToPort: '80'
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupSSHinbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '22'
+      ToPort: '22'
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupHTTPSInbound:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '443'
+      ToPort: '443'
+      CidrIp: 0.0.0.0/0
+  EcsSecurityGroupALBports:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref 'EcsSecurityGroup'
+      IpProtocol: tcp
+      FromPort: '31000'
+      ToPort: '61000'
+      SourceSecurityGroupId: !Ref 'EcsSecurityGroup'
+  RdsPrivateSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Rds Private Security Group
+      GroupName: rds
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+          SourceSecurityGroupId: !Ref EcsSecurityGroup
+      VpcId: !Ref VPC
+  RdsSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Grupo de sub rede do RDS
+      SubnetIds: 
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      Tags: 
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: db-subnet-group
+        - Key: microsservico
+          Value: !Ref Microservice
+  CloudwatchLogsGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['-', [ECSLogGroup, !Ref 'AWS::StackName']]
+      RetentionInDays: 14
+  ECSALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${Stage}-LoadBalancer
+      Scheme: internet-facing
+      LoadBalancerAttributes:
+      - Key: idle_timeout.timeout_seconds
+        Value: '30'
+      Subnets:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      SecurityGroups: [!Ref 'EcsSecurityGroup']
+      Tags:
+        - Key: projeto
+          Value: !Ref ProjectTag
+        - Key: area
+          Value: !Ref AreaTag
+        - Key: ambiente
+          Value: !Ref Stage
+        - Key: servico-aws
+          Value: load-balancer
+        - Key: microsservico
+          Value: !Ref Microservice
+  ECSAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetOne
+        - !Ref PublicSubnetTwo
+      LaunchConfigurationName: !Ref 'ContainerInstancesPublicAutoScaling'
+      MinSize: '1'
+      MaxSize: !Ref 'MaxSize'
+      DesiredCapacity: !Ref 'DesiredCapacity'
+      Tags:
+        - Key: projeto
+          PropagateAtLaunch: true
+          Value: !Ref ProjectTag
+        - Key: area
+          PropagateAtLaunch: true
+          Value: !Ref AreaTag
+        - Key: ambiente
+          PropagateAtLaunch: true
+          Value: !Ref Stage
+        - Key: servico-aws
+          PropagateAtLaunch: true
+          Value: auto-scaling
+        - Key: microsservico
+          PropagateAtLaunch: true
+          Value: !Ref Microservice
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: 'true'
+  PublicAutoScalingUpPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref ECSAutoScalingGroup
+      Cooldown: 120
+      ScalingAdjustment: 1
+  PublicAutoScalingInPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AdjustmentType: ChangeInCapacity
+      AutoScalingGroupName: !Ref ECSAutoScalingGroup
+      Cooldown: 120
+      ScalingAdjustment: -1
+  ContainerInstancesPublicAutoScaling:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref ECSAMI
+      SecurityGroups: [!Ref 'EcsSecurityGroup']
+      InstanceType: !Ref 'InstanceType'
+      IamInstanceProfile: !Ref 'EC2InstanceProfile'
+      KeyName: pub-subnet
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          echo ECS_CLUSTER=${ECSCluster} >> /etc/ecs/ecs.config
+          yum install -y aws-cfn-bootstrap
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource ECSAutoScalingGroup --region ${AWS::Region}
+  CPUAlarmHighPublicScaling:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Scale-up if CPU > 85% for 5 minutes"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 85
+      AlarmActions:
+        - !Ref PublicAutoScalingUpPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ECSAutoScalingGroup
+      ComparisonOperator: GreaterThanThreshold
+  CPUAlarmLowPublicScaling:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Scale-in if CPU < 65% for 5 minutes"
+      MetricName: CPUUtilization
+      Namespace: AWS/EC2
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 65
+      AlarmActions:
+        - !Ref PublicAutoScalingInPolicy
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref ECSAutoScalingGroup
+      ComparisonOperator: LessThanThreshold
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ec2.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'ecs:CreateCluster'
+              - 'ecs:DeregisterContainerInstance'
+              - 'ecs:DiscoverPollEndpoint'
+              - 'ecs:Poll'
+              - 'ecs:RegisterContainerInstance'
+              - 'ecs:StartTelemetrySession'
+              - 'ecs:Submit*'
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+              - 'ecr:GetAuthorizationToken'
+              - 'ecr:BatchGetImage'
+              - 'ecr:GetDownloadUrlForLayer'
+              - 's3:*'
+              - 'secretsmanager:*'
+              - 'kms:*'
+              - 'SNS:*'
+              - 'ses:*'
+              - 'cognito-idp:*'
+              - 'ssm:*'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'dynamodb:GetItem'
+            Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${Stage}_notificacao_template'
+  AutoscalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [application-autoscaling.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: service-autoscaling
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              - 'application-autoscaling:*'
+              - 'cloudwatch:DescribeAlarms'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'ecs:DescribeServices'
+              - 'ecs:UpdateService'
+            Resource: '*'
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles: [!Ref 'EC2Role']
+
+Outputs:
+  ClusterName:
+    Description: The name of the ECS cluster, used by the deploy script
+    Value: !Ref 'ECSCluster'
+    Export:
+      Name: !Join [':', [!Ref "AWS::StackName", "ClusterName" ]]
+  Url:
+    Description: The url at which the application is available
+    Value: !Join ['', [!GetAtt 'ECSALB.DNSName']]
+  ALBArn:
+    Description: The ARN of the ALB, exported for later use in creating services
+    Value: !Ref 'ECSALB'
+    Export:
+      Name: !Join [':', [!Ref "AWS::StackName", "ALBArn" ]]
+  VPCId:
+    Description: The ID of the VPC that this stack is deployed in
+    Value: !Ref 'VPC'
+    Export:
+      Name: !Join [':', [!Ref "AWS::StackName", "VPCId" ]]

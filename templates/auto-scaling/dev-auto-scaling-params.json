@@ -1,0 +1,6 @@
+{
+    "Parameters": {
+        "PrivateAutoScalingGroup":"DevPrivateInfraCore-PrivateAutoScalingGroup-7E6TZSEH4UTZ",
+        "PublicAutoScalingGroup":"DevInfraCore-ECSAutoScalingGroup-1C2V02VFVDJXV"
+    }
+}

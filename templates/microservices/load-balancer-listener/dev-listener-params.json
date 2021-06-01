@@ -1,0 +1,7 @@
+{
+    "Parameters": {
+        "Stage":"dev",
+        "LoadBalancerArn": "",
+        "CertificateArn": ""
+    }
+}

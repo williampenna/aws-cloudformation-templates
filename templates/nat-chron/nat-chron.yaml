@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  Stage:
+    Type: String
+    Description: Envrionment
+  NatInstanceId:
+    Type: String
+    Description: NAT instance Id
+Resources:
+  NatStartStopLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties: 
+      Code: 
+        ZipFile: |
+            var AWS = require('aws-sdk');
+            exports.handler = (event, context, callback) => {
+                event.instances.forEach((instance) => {
+                    switch(event.action) {
+                        case 'stop':
+                            console.log(`Stopping instance '${instance}'...`);
+                            stopInstance(instance);
+                            break;
+                        case 'start':
+                            console.log(`Starting instance '${instance}'...`);
+                            startInstance(instance);
+                            break;
+                        default:
+                            throw `Invalid action ${event.action}`;
+                    }
+                })
+                callback(null, 'Done!');
+            };
+
+            const stopInstance = (instanceId) => {
+                var ec2 = new AWS.EC2();
+                var today = new Date();
+                var params = {
+                  InstanceIds: [ instanceId ]
+                }
+                ec2.stopInstances(params, function(err, data) {
+                  if (err) console.log(err, err.stack); // an error occurred
+                  else     console.log(data);           // successful response
+                });
+            };
+
+            const startInstance = (instanceId) => {
+                var ec2 = new AWS.EC2();
+                var params = {
+                  InstanceIds: [ instanceId ]
+                };
+                ec2.startInstances(params, function(err, data) {
+                  if (err) console.log(err, err.stack); // an error occurred
+                  else     console.log(data);           // successful response
+                });
+            };
+      Handler: index.handler
+      Description: Lambda Function to Start and Stop NAT Instance
+      FunctionName: !Sub ${Stage}-StartStopNat
+      Role: !GetAtt LambdaNatStartStopRole.Arn
+      Runtime: nodejs12.x
+
+  CloudWatchStartRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Cloud Watch Rule to start the database
+      Name: !Sub ${Stage}-nat-start
+      ScheduleExpression: cron(50 9 ? * MON-FRI *)
+      State: ENABLED
+      Targets: 
+        - Arn:
+            Fn::GetAtt:
+              - "NatStartStopLambdaFunction"
+              - "Arn"
+          Id: !Sub ${Stage}-StartStopNat
+          Input: !Sub '{ "instances": ["${NatInstanceId}"], "action":"start" }'
+
+  CloudWatchStopRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Cloud Watch Rule to stop the database
+      Name: !Sub ${Stage}-nat-stop
+      ScheduleExpression: cron(0 22 ? * MON-FRI *)
+      State: ENABLED
+      Targets: 
+        - Arn:
+            Fn::GetAtt:
+              - "NatStartStopLambdaFunction"
+              - "Arn"
+          Id:  !Sub ${Stage}-StartStopNat
+          Input: !Sub '{ "instances": ["${NatInstanceId}"], "action":"stop" }'
+
+  PermissionForStartEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Sub ${Stage}-StartStopNat
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: 
+        Fn::GetAtt: 
+          - "CloudWatchStartRule"
+          - "Arn"
+
+  PermissionForStopEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Sub ${Stage}-StartStopNat
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: 
+        Fn::GetAtt: 
+          - "CloudWatchStopRule"
+          - "Arn"
+
+  LambdaNatStartStopRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: "lambda-nat-start-stop"
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - 
+                Action:
+                  - 'ec2:StartInstances'
+                  - 'ec2:StopInstances'
+                Resource: '*'
+                Effect: Allow
+      RoleName: !Sub '${Stage}-LambdaNatStartStop'

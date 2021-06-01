@@ -1,0 +1,23 @@
+{
+    "Parameters": {
+        "ServiceName": "",
+        "Stage": "dev",
+        "ProjectTag": "",
+        "AreaTag": "",
+        "Microservice": "",
+        "EcrImage": "",
+        "VpcId": "",
+        "LoadBalancerArn": "",
+        "ListenerArn": "",
+        "ListenerArnHttps": "",
+        "ClusterName": "dev-PrivateCluster",
+        "PathPattern": "/v1//*",
+        "Priority": "3",
+        "PrivateNamespaceId": "",
+        "Region": "us-east-2",
+        "LogGroupName": "",
+        "LoadBalancerUrl": "",
+        "SecurityGroup": "",
+        "SubnetOne": "",
+    }
+}
